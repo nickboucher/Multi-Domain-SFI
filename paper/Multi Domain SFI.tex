@@ -200,6 +200,8 @@ Therefore, we require that each return address is \texttt{AND}ed with $r_i$ befo
 
 Because each isolation domain requires a tag with a uniquely positive binary bit, the number of isolation domains is limited by the size of the virtual address space. The maximum number of domains is the number of addressable bits minus the amount of overhead. Overhead is defined as the number of bits required for alignment and to fit the contents of the largest domain within one contiguous memory region. Thus, the maximum number of domains is \texttt{O(b)} for a virtual address space with $b$ bits.
 
+Additionally, multi-domain SFI affects the use of traditional Address Space Layout Randomization (ASLR). Since inter-domain jumps must be performed as direct memory operations, any address which is the potential target of an indirect jump cannot be randomized. ASLR can still be used in a smaller, modified capacity, however, to offset the starting locations of the stack within each domain by initializing the stored \texttt{ESP} and \texttt{EBP} values to small, random offsets.
+
 \section{Language Implementation}
 
 To gain the benefits of multi-domain SFI, developers must annotate their source code in such a way as to indicate how the address space is to be partitioned into isolation domains. In this section, we present a method of annotation for C++ which is consumed by multi-domain SFI C++ compilers to generate multi-domain SFI complaint code.
@@ -364,14 +366,6 @@ The following section represents a high-level summary of multi-domain SFI as a b
 	\item \texttt{RET} commands are universally disallowed in the generated x86 output and are replaced by indirect jumps
 	\item All compiler-generated assembly will follow SFI-defined alignment specifications
 
-\end{itemize}
-
-\section{Notes}
-
-\begin{itemize}	
-	\item It remains unclear how ASLR would affect the compiler’s ability to know runtime virtual addresses at compile time
-
-	\item  \textbf{TODO}: The trampoline domain will need to be treated as a normal domain -- not in the lowest portion of the address space -- to prevent indirect jumps to the trampoline region. As such, $r_i$ will not end up being equal to $m_i$.
 \end{itemize}
 
 \medskip
