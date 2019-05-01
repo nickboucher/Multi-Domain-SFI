@@ -1,4 +1,4 @@
-\documentclass[12pt]{article}
+\documentclass[12pt]{IEEEtran}
 
 \usepackage[table,xcdraw]{xcolor}
 \usepackage[margin=1in]{geometry} 
@@ -6,6 +6,7 @@
 \usepackage{drawstack}
 \usepackage{minted}
 \usepackage{booktabs}
+\usepackage{caption}
 
 
 \definecolor{light-gray}{gray}{0.95}
@@ -141,8 +142,9 @@ As a consequence of this, the  \texttt{ESP} and \texttt{EBP} registers must be s
 
 Thus, any given domain will be laid out as depicted in Figure \ref{domain_layout}.
 
-\begin{figure}
+\begin{figure*}[h]
 \centering
+\captionsetup{justification=centering}
 \begin{drawstack}
 	\startframe
 		\cell{\texttt{ESP}$_i$, \texttt{EBP}$_i$ storage} \cellcom{address $t_{i+1}$}
@@ -153,7 +155,7 @@ Thus, any given domain will be laid out as depicted in Figure \ref{domain_layout
 	\finishframe{Domain $d_i$}
 \end{drawstack}
 \caption{An example of the memory layout for a specific domain} \label{domain_layout}
-\end{figure}
+\end{figure*}
 
 \subsection{Restricting Return Addresses}
 
@@ -243,36 +245,36 @@ Let us consider C++ code which is a simple program that outputs:\\ \\
 #include <stdio.h>
 
 namespace sfi_foo {
-	void hello() {
-		printf("Hello ");
-	}
+    void hello() {
+        printf("Hello ");
+    }
 	
-	void world() {
-		printf("World.\n");
-	}
+    void world() {
+        printf("World.\n");
+    }
 	
-	#export(bar)
-	void helloWorld() {
-		hello();
-		world();
-	}
+    #export(bar)
+    void helloWorld() {
+        hello();
+        world();
+    }
 }
 
 namespace sfi_bar {
-	void goodbye() {
-		printf("Goodbye.\n");
-	}
+    void goodbye() {
+        printf("Goodbye.\n");
+    }
 	
-	#export(std)
-	void greeting() {
-		sfi_foo::helloWorld();
-		goodbye();
-	}
+    #export(std)
+    void greeting() {
+        sfi_foo::helloWorld();
+        goodbye();
+    }
 }
 
 int main() {
-	sfi_bar::greeting();
-	return 0;
+    sfi_bar::greeting();
+    return 0;
 }
 
 \end{minted}
@@ -281,7 +283,7 @@ int main() {
 
 The virtual memory layout depicted in Figure \ref{domains_mem} is the in-memory representation of the virtual address space for the compiled binary of the above C++ code. Memory addresses indicate the lower bound of the address range for the adjacent memory section.\\
 
-\begin{figure}[p]
+\begin{figure*}[b]
 \begin{drawstack}[scale=0.75]
 	\footnotesize
 	\startframe
@@ -322,18 +324,20 @@ The virtual memory layout depicted in Figure \ref{domains_mem} is the in-memory 
 	\finishframe{SFI trampoline domain}
 \end{drawstack}
 \caption{Tag values $t_i$, equivalent to starting memory addresses, for each isolation domain} \label{domains_mem}
-\end{figure}
+\end{figure*}
 
 Note that \texttt{NOP}s will be placed after the code within each section in order to maintain the alignment required for the multi-domain SFI memory layout.
 
 \subsubsection{Bitmasks View}
 
 As defined in Eq.  \ref{eq:bitmask}, bitmasks are created by logically \texttt{OR}ing the tag of a region with the value $G$. Applying the definition of $G$ from Eq. \ref{eq:G} yields a value of
-$$ \texttt{0x07fffff0}\ =\ \texttt{0b00000111111111111111111111110000} $$
+$$ \small{\texttt{0x07fffff0}\ =}$$
+$$ \small{\texttt{0b00000111111111111111111111110000}} $$
 
 With the value of $G$, we can easily calculate the bitmasks for each region from the information in the annotated code. Table \ref{tbl:masks} shows all isolation domains with their corresponding bitmasks rather than their tags.
 
 \begin{table}[H]
+\captionsetup{justification=centering}
 \centering
 \begin{tabular}{@{}lll@{}}
 \rowcolor[HTML]{EFEFEF} 
