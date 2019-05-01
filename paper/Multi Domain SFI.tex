@@ -351,26 +351,13 @@ With the value of $G$, we can easily calculate the bitmasks for each region from
 \label{tbl:masks}
 \end{table}
 
-\section{Summary}
+\section{Future Work}
 
-The following section represents a high-level summary of multi-domain SFI as a brief summary of some of the key points of this paper.
+While this paper develops a comprehensive theoretical model for the multi-domain SFI system, further work is needed to implement this system within a compiler and to profile the overhead of its techniques on the runtime of compiled code.
 
-\begin{itemize}
-	\item Every namespace that begins with \texttt{sfi} is an SFI isolation domain
-	\begin{itemize}
-		\item More formally, an SFI zone named \texttt{foo} will be denoted \texttt{sfi\_foo}
-	\end{itemize}
-	\item Functions which are to be made available to other isolation domains are decorated with a C++ Macro that contains the name of the zone(s) which should be able to access the decorated function
-	\begin{itemize}
-		\item More formally, \texttt{\#export(foo,bar)} makes the decorated function available to both of the isolation domains foo and bar
-		\item At compile time, trampoline functions to these decorated functions will be placed into a dedicated trampoline domain
-	\end{itemize}
-	\item At compile time, direct jumps (e.g. \texttt{JMP addr}, \texttt{CALL addr}) within an isolation domain are allowed
-	\item At compile time, indirect jumps (e.g. \texttt{JMP reg}) must be masked by a bitmask which limits the targets of jumps to within the same domain
-	\item \texttt{RET} commands are universally disallowed in the generated x86 output and are replaced by indirect jumps
-	\item All compiler-generated assembly will follow SFI-defined alignment specifications
+\section{Conclusion}
 
-\end{itemize}
+We have developed a comprehensive theoretical model that provides the same guarantees as traditional SFI while allowing up to \texttt{O(b)} different isolation zones for a \textit{b}-bit virtual address space. This model employs the use of forced memory alignment, restricted memory operations, bitmasking indirect jumps, domain-independent stacks and heaps, and a trampoline domain for control-flow transfers across domains. We have also developed a developer model for C++ in which developers can specify multi-domain SFI configurations through code annotations. The development of this model has significant pertinence to enabling low-overhead, process-like fault isolation for key components of systems-minimal application designs such as Unikernels.
 
 \medskip
  
