@@ -192,9 +192,13 @@ $$ r_i\ =\ t_i\ |\ t_\text{tramp}\ |\ G $$
 
 Therefore, we require that each return address is \texttt{AND}ed with $r_i$ before every indirect return jump.
 
-\subsection{Inter-domain Jumps and Objects}
+\subsection{Function Pointers and Objects}
 
-\textbf{TODO}
+Function pointers present a significant challenge to the usage of multi-domain SFI. Specifically, if a function pointer points to a function whose code is outside of the invoking domain, that function call will fail because the pointer will be masked before the indirect jump (which are not allowed across domains). As such, we define that function pointers cannot be invoked across domain boundaries. This may change the implementation of some programs, but we expect the impact to be small and avoidable.
+
+However, the issue of inter-domain function pointers poses a larger issue in the context of objects. Objects are implemented by compilers as \textit{vtables}, which are effectively structs containing function pointers. If a class is defined within the same domain in which its objects will be declared and used, than there will be no issues. However, issues arise if objects are passed between domains and methods are invoked in the non-original domain. As such, we will define that methods on objects can only be invoked in the domain in which that object was instantiated.
+
+Furthermore, a developer may want to export a class definition to another domain. If this is occurs, the compiler will fully duplicate the method code in all exported regions such that objects instantiated in the exported region can still function normally. If an imported library (such as \texttt{stdlib} is exported, the compiler will interpret such an action as exporting all class definitions in the library to the exported domain.
 
 \subsection{Limitations}
 
