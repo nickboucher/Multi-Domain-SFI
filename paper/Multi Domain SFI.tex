@@ -171,11 +171,11 @@ For each function that one domain exports to another, a trampoline function is g
 
 Trampoline functions, which are created silently by the compiler, are standard functions whose function bodies contain only a call to the target function with the same arguments passed to the trampoline function. However, the return behavior of the trampoline function is slightly modified. Rather than emitting a \texttt{RET} instruction at the end of the trampoline function, the compiler will emit instructions that place the return value of the function on the trampoline stack, load the return address into a register, mask the return address (described in Section \ref{retmasks}), and then jump to the masked address.
 
-Since there are no restrictions on read instructions across domains, there are no issues with invoking domains being able to read return values across domains. It is important to note, however, that domains cannot pass arguments onto the stacks of other domains when making an inter-domain call, as that would require the invoking domain to be able to write to the stack of the target domain. Instead, we will redefine inter-domain function calling conventions such that the invoking domain places arguments on \textit{its own} stack, and then the target domain copies the arguments off of the stack by reading the values at the expected argument offsets from the invoking domain's stored \texttt{ESP} address. Similarly, return values are read by the invoking domain from the expected offset of the target domain's stored \texttt{ESP} value. Each domain will be required to clean up arguments on its own stack at the end of a function's execution. Note that the trampoline domain will always be either the invoking or target domain for every inter-domain call.
+Since there are no restrictions on read instructions across domains, there are no issues with invoking domains being able to read return values across domains. It is important to note, however, that domains cannot pass arguments onto the stacks of other domains when making an inter-domain call, as that would require the invoking domain to be able to write to the stack of the target domain. Instead, we will redefine inter-domain function calling conventions such that the invoking domain places arguments on \textit{its own} stack, and then the target domain copies the arguments off of the stack by reading the values at the expected argument offsets from the invoking domain's stored \texttt{ESP} address. To prevent domains from specifying arbitrary return addresses on their own stack before jumping to the trampoline domain, the trampoline domain shall copy the return address of its invoker onto its own stack just as it copies the function arguments. Similarly, return values are read by the invoking domain from the expected offset of the target domain's stored \texttt{ESP} value. Each domain will be required to clean up arguments on its own stack at the end of a function's execution. Note that the trampoline domain will always be either the invoking or target domain for every inter-domain call.
 
 While we will require that every inter-domain jump go through the trampoline region, we will also place more specific limits on the domains that are able to access specific addresses within the trampoline region. Since we require that all inter-domain jumps be direct memory operations, we by definition know the exact targets of every inter-domain jump at compile time. As a result, we can restrict that a domain $d_i$ only be allowed to jump to a function in $d_\text{tramp}$ if the target function is a trampoline for some function in $d_j$ which was exported to $d_i$.
 
-Finally, by definition every domain should be allowed to access the trampoline domain. Rather than modifying the definition of bitmask $m_i$ (Eq. \ref{eq:bitmask}), we will construct the trampoline domain so that it is in the lowest region of the virtual address space. That is, $d_\text{tramp}$ will be placed in the contiguous address region which is directly adjacent to \texttt{0x00000000}. By this construction, $d_\text{tramp}$ will automatically be accessible for every $m_i$ without modification of the definition.
+Finally, the trampoline domain shall be created within the address space just as any other domain; that is, $d_\text{tramp}$ will have a corresponding tag $t_\text{tramp}$ which is a power of two. Even though every domain should be able to access the trampoline domain, we require that any jumps to the trampoline domain be direct jumps. As such, we do not need to worry about updating the definition of $m_i$ from Eq. \ref{eq:bitmask} to grant access to the trampoline region as bitmasks are used for providing access for indirect jumps.
 
 
 \subsubsection{Return Masks} \label{retmasks}
@@ -184,13 +184,13 @@ In order to allow inter-domain transfers via trampoline functions as described i
 
 As such, we define the return mask $r_i$ for domain $d_i$ as:
 
-\begin{equation} \label{eq:retmaskeq}
+\begin{equation} \label{eq:retmask}
 r_i \triangleq (\prod_{j\in\texttt{access}(d_i)}t_j)\ |\ G
 \end{equation}
-where \texttt{access}$(d_i)$ returns the set of indices $j$ for the domains $d_j\in D$ that are allowed to access domain $d_i$. However, since we require that inter-domain transfers pass through $d_\text{tramp}$, we know that \texttt{access}$(d_i)$ will only return $\{i,\text{tramp}\}$. Therefore, Eq. \ref{retmasks} can be simplified to:
-$$ r_i\ =\ t_i\ |\ t_\text{tramp}\ |\ G\ =\ t_i\ |\ G\ =\ m_i$$
+where \texttt{access}$(d_i)$ returns the set of indices $j$ for the domains $d_j\in D$ that are allowed to access domain $d_i$. However, since we require that inter-domain transfers pass through $d_\text{tramp}$, we know that \texttt{access}$(d_i)$ will only return $\{i,\text{tramp}\}$. Therefore, Eq. \ref{eq:retmask} can be simplified to:
+$$ r_i\ =\ t_i\ |\ t_\text{tramp}\ |\ G $$
 
-Therefore, we require that each return address is \texttt{AND}ed with it's original bitmask $m_i$ before every indirect return jump.
+Therefore, we require that each return address is \texttt{AND}ed with $r_i$ before every indirect return jump.
 
 \subsection{Inter-domain Jumps and Objects}
 
@@ -305,7 +305,6 @@ The virtual memory layout depicted in Figure \ref{domains_mem} is the in-memory 
 		\cell{...}
 		\cell{Heap\textsubscript{std}} \cellcom{0x10000000=0b000\textbf{1}0000000000000000000000000000}
 	\finishframe{SFI domain \texttt{std}}
-	\cell{...}
 	\startframe
 		\cell{\texttt{stdio\_\_foo()}\\...}
 		\cell{\texttt{stdio\_\_bar()}\\...}
@@ -313,7 +312,7 @@ The virtual memory layout depicted in Figure \ref{domains_mem} is the in-memory 
 		\cell{\texttt{greeting\_\_std()}}
 		\cell{Stack\textsubscript{tramp}}
 		\cell{...}
-		\cell{Heap\textsubscript{tramp}} \cellcom{0x00000000=0b00000000000000000000000000000000}
+		\cell{Heap\textsubscript{tramp}} \cellcom{0x08000000=0b0000\textbf{1}000000000000000000000000000}
 	\finishframe{SFI trampoline domain}
 \end{drawstack}
 \caption{Tag values $t_i$, equivalent to starting memory addresses, for each isolation domain} \label{domains_mem}
@@ -324,7 +323,7 @@ Note that \texttt{NOP}s will be placed after the code within each section in ord
 \subsubsection{Bitmasks View}
 
 As defined in Eq.  \ref{eq:bitmask}, bitmasks are created by logically \texttt{OR}ing the tag of a region with the value $G$. Applying the definition of $G$ from Eq. \ref{eq:G} yields a value of
-$$ \texttt{0x0ffffff0}\ =\ \texttt{0b00001111111111111111111111110000} $$
+$$ \texttt{0x07fffff0}\ =\ \texttt{0b00000111111111111111111111110000} $$
 
 With the value of $G$, we can easily calculate the bitmasks for each region from the information in the annotated code. Table \ref{tbl:masks} shows all isolation domains with their corresponding bitmasks rather than their tags.
 
@@ -333,13 +332,13 @@ With the value of $G$, we can easily calculate the bitmasks for each region from
 \begin{tabular}{@{}lll@{}}
 \rowcolor[HTML]{EFEFEF} 
 \textbf{Domain ($d_i$)} & \textbf{Tag ($t_i$)} & \textbf{Bitmask ($m_i$)} \\ \midrule
-\texttt{stdio}          & 0x80000000           & 0x8ffffff0               \\
+\texttt{stdio}          & 0x80000000           & 0x87fffff0               \\
 \rowcolor[HTML]{EFEFEF} 
-\texttt{foo}            & 0x40000000           & 0x4ffffff0               \\
-\texttt{bar}            & 0x20000000           & 0x2ffffff0               \\
+\texttt{foo}            & 0x40000000           & 0x47fffff0               \\
+\texttt{bar}            & 0x20000000           & 0x27fffff0               \\
 \rowcolor[HTML]{EFEFEF} 
-\texttt{std}            & 0x10000000           & 0x1ffffff0               \\
-\texttt{tramp}          & 0x00000000           & 0x0ffffff0              
+\texttt{std}            & 0x10000000           & 0x17fffff0               \\
+\texttt{tramp}          & 0x08000000           & 0x0ffffff0              
 \end{tabular}
 
 \caption{Tag and bitmask values for each domain}
