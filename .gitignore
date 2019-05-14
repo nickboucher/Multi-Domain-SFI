@@ -31,5 +31,13 @@
 *.out
 *.app
 
-$ Mac Finder DB Files
+# Mac Finder DB Files
 .DS_Store
+
+# Build directory & CMake Files
+build/
+CMakeFiles/
+CMakeCache.txt
+Makefile
+*.cmake
+lib/
