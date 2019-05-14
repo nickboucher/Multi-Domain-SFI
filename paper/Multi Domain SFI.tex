@@ -27,11 +27,11 @@ Software Fault Isolation, or SFI, is a set of well-defined, assembly-language-sp
 
 \subsection{Motivation}
 
-The motivation for this work is a desire to add arbitrary process-like code and memory isolation on platforms that do not support classical *nix-stlye processes. Specifically, the development of Unikernels -- small binaries that contain both compiled application code and the minimum number of operating system components needed to run that application code \cite{madhavapeddy_unikernels:_2013} -- has demonstrated the need for multi-domain SFI.
+The motivation for this work is a desire to add arbitrary process-like code and memory isolation on platforms that do not support classical *nix-style processes. Specifically, the development of Unikernels -- small binaries that contain both compiled application code and the minimum number of operating system components needed to run that application code \cite{madhavapeddy_unikernels:_2013} -- has demonstrated the need for multi-domain SFI.
 
-One common criticism of Unikernels is the difficulty in debugging live systems. When something causes a deployed Unikernel to crash, the lack of an underlying operating system means that it can be difficult to examine the state of the program at the time of its failure. While remote debugging exists for a number of major Unikernel systems (such as a remote GDB stub for the popular \texttt{IncludeOS} \cite{a._bratterud_includeos:_2015} Unikernel\footnote{https://www.includeos.org/blog/2018/debugging.html}), remote debugging capabilities are not guaranteed to be online if the application error in any way modified the in-memory machine instructions or runtime memory utilized by the remote debugging stub.
+One common criticism of Unikernels is difficulty in debugging live systems. When something causes a deployed Unikernel to crash, the lack of an underlying operating system means that it can be difficult to examine the state of the program at the time of its failure. While remote debugging exists for a number of major Unikernel systems (such as a remote GDB stub for the popular \texttt{IncludeOS} \cite{a._bratterud_includeos:_2015} Unikernel\footnote{https://www.includeos.org/blog/2018/debugging.html}), remote debugging capabilities are not guaranteed to be online if the application error in any way modified the in-memory machine instructions or runtime memory utilized by the remote debugging stub.
 
-While it would seem that traditional SFI would offer the ability to isolate the remote debugging region of virtual memory from Unikernel application code, further investigation revealed that the two domain limitation of traditional SFI is inadequate for solving this problem. This is illustrated in the C++ standard library. In the case of \texttt{IncludeOS}, the standard library is referened \textit{both} by the remote debugging stub and Unikernel application code. Sharing this segment of memory between the two different SFI isolation domains is non-ideal as it requires placing trust in both isolation domains not to corrupt the standard library code for the other domain. As such, a third isolation domain with appropriate trampolines into the required portions of the standard library would allow decreasing the amount of trust to the standard library not corrupting itself, which is significantly more ideal. This context proved to be the motivation for multi-domain SFI.
+While it would seem that traditional SFI would offer the ability to isolate the remote debugging region of virtual memory from Unikernel application code, further investigation revealed that the two domain limitation of traditional SFI is inadequate for solving this problem. This is illustrated in the C++ standard library. In the case of \texttt{IncludeOS}, the standard library is referenced \textit{both} by the remote debugging stub and Unikernel application code. Sharing this segment of memory between the two different SFI isolation domains is non-ideal as it requires placing trust in both isolation domains to not corrupt the standard library code for the other domain. As such, a third isolation domain with appropriate trampolines into the required portions of the standard library would allow decreasing the amount of trust to the standard library not corrupting itself, which is significantly more ideal. This context proved to be the motivation for multi-domain SFI.
 
 \subsection{Document Layout}
 
@@ -53,7 +53,7 @@ The remainder of this section will address the application of memory alignment a
 
 \subsection{Memory Alignment}
 
-Like classic SFI \cite{mccamant_evaluating_2006, yee_native_2009, sehr_adapting_2010}, multi-domain SFI enforces 32-byte memory alignment for all basic blocks of machine code. Phrased differently, the virtual memory address of any possible jump target must be aligned to a 32-byte memory region. In practice, this means that the least significant 4 bits of the virtual memory address for the target of any jump must all be zeros.
+Like classic SFI \cite{mccamant_evaluating_2006, yee_native_2009, sehr_adapting_2010}, multi-domain SFI enforces 32-byte memory alignment for all basic blocks of machine code. Phrased differently, the virtual memory address of any possible jump target must be aligned to a 32-byte memory region. In practice, this means that the least significant 5 bits of the virtual memory address for the target of any jump must all be zeros.
 
 Of course, most machine languages (such as x86) do not use fixed sized instructions, and instruction sizes tend to be far less than 32-bytes. This means that any basic block of code which is not 32-byte aligned by chance must be padded with \texttt{NOOP} instructions until the block is properly aligned. As with traditional SFI, which uses the same mechanism, this incurs some amount of binary size overhead as emitted by the compiler and memory overhead at runtime.
 
@@ -70,7 +70,7 @@ The more difficult challenge in isolating regions of memory is establishing a me
 \item \textbf{Target Domain}: The SFI isolation domain for which any read, write, or jump machine operation targets. It may be the same or different than the invoking domain. The term target domain is only defined for machine instructions which reference exactly one virtual address within the instruction's arguments.
 \end{itemize}
 
-For any memory operation for which there is a well defined target domain, we further define two categories of operations: \textit{direct memory operations} and \textit{indirect memory operations}. Every memory operation for which there is a well defined target domain must be either a direct or indirect memory operation. We will explicitly define these terms as:
+For any memory operation for which there is a well-defined target domain, we further define two categories of operations: \textit{direct memory operations} and \textit{indirect memory operations}. Every memory operation for which there is a well-defined target domain must be either a direct or indirect memory operation. We will explicitly define these terms as:
 
 \begin{itemize}
 \item \textbf{Direct Memory Operation}: Direct memory operations are machine instructions whose target memory argument is given as an explicit, hard-coded value. An example in x86 is \texttt{JMP 0x0804cfc0}.
@@ -81,11 +81,11 @@ Restricting memory access takes different forms for direct and indirect memory o
 
 \subsubsection{Restricting Direct Memory Operations}
 
-Restricting memory access for direct memory operations is a trivially simple task when performed at compile time, and does not differ from the mechanism used by classic SFI. By definition, the target address is known at compile time since the target address is emitted directly by the compiler. Since the target domain is derived from the target address, the compiler can also easily identify the target domain for any direct memory operation.
+Restricting memory access for direct memory operations is a trivially simple task when performed at compile time and does not differ from the mechanism used by classic SFI. By definition, the target address is known at compile time since the target address is emitted directly by the compiler. Since the target domain is derived from the target address, the compiler can also easily identify the target domain for any direct memory operation.
 
-As such, we shall define a compiler restraint for multi-domain SFI compilers that the compiler must check all potentially dangerous direct memory operations -- writes and jumps -- before emitting compiled binaries to ensure that every direct memory operation has a target address that is within a target domain to which the invoking domain has been granted access by the developer. If the compiler detects a memory operation that is not permitted and cannot be resolved to a permissible operation, the compiler shalt halt the compilation process and output a compiler error highlighting the offending source code.
+As such, we shall define a compiler restraint for multi-domain SFI compilers that the compiler must check all potentially dangerous direct memory operations -- writes and jumps -- before emitting compiled binaries to ensure that every direct memory operation has a target address that is within a target domain to which the invoking domain has been granted access by the developer. If the compiler detects a memory operation that is not permitted and cannot be resolved to a permissible operation, the compiler shall halt the compilation process and output a compiler error highlighting the offending source code.
 
-Through this compiler design, we can guarantee that all direct memory operations successfully emitted from a correctly implemented multi-domain SFI compiler will indeed be valid memory operations. Note that if desired, this can be statically verified by examining any binary emitted by by a multi-domain SFI compiler \cite{yee_native_2009}, since all relevant information is contained statically within the generated binary.
+Through this compiler design, we can guarantee that all direct memory operations successfully emitted from a correctly implemented multi-domain SFI compiler will indeed be valid memory operations. Note that if desired, this can be statically verified by examining any binary emitted by a multi-domain SFI compiler \cite{yee_native_2009}, since all relevant information is contained statically within the generated binary.
 
 In multi-domain SFI, we will place the restriction that all inter-domain jumps which are not return statements must be direct jumps. This will allow the compiler to statically verify that the jump target is in a permitted domain. Furthermore, we will disallow write operations across domains, whether direct or indirect operations.
 
@@ -97,9 +97,9 @@ The key insight in multi-domain SFI is that for every isolation domain $d_i \in 
 
 Bitmasks are constructed as follows: each isolation domain $d_i$ will be associated with a tag $t_i$. No two isolation domains can have the same tag. A tag is a unique virtual memory address which is a power of 2, thus having a single 1 in its binary representation at bit $b$.  An isolation domain will begin at the memory address specified by its tag and contain the entire virtual address range whose address is larger than $t_i$ and smaller the first address with bit $b+1$ equal to 1. We will further define the bitmask generator $G$ to be the following value for 32-bit address spaces:
 \begin{equation} \label{eq:G}
-G \triangleq (\neg\prod_{i=0}^n(t_i))\ |\  0xFFFFFFF0
+G \triangleq (\neg\prod_{i=0}^n(t_i))\ |\  \texttt{0xffffffe0}
 \end{equation}
-where $|$ represents logical OR, $\prod$ represent the logical OR of all elements in the specified set, and $\neg$ represents the bitflip operation. That is, $G$ is defined at the value where all the corresponding bits $b_i$ for each $t_i$ are set to zero, the lowest 4 bits are set to zero (for 32-byte alignment), and all other bits are set to 1. Finally, the bitmask $m_i$  for region $d_i$ is defined as:
+where $|$ represents logical OR, $\prod$ represent the logical OR of all elements in the specified set, and $\neg$ represents the bitflip operation. That is, $G$ is defined at the value where all the corresponding bits $b_i$ for each $t_i$ are set to zero, the lowest 5 bits are set to zero (for 32-byte alignment), and all other bits are set to 1. Finally, the bitmask $m_i$  for region $d_i$ is defined as:
 \begin{equation} \label{eq:bitmask}
 m_i \triangleq t_i\ |\ G
 \end{equation}
@@ -115,7 +115,7 @@ Would be emitted by the multi-domain SFI compiler as:
 AND EAX, m_i
 JMP EAX
 \end{minted}
-for where m\_i is the bitmask as defined in Eq. \ref{eq:bitmask}.  for the invoking domain $d_i$. \\
+for where m\_i is the bitmask as defined in Eq. \ref{eq:bitmask}  for the invoking domain $d_i$. \\
 
 Note that many assembly languages allow offset-based addressing. For example, in \texttt{x86} it would perfectly reasonable to jump to a fixed offset from a register such as:
 \begin{minted}[bgcolor=light-gray]{asm}
@@ -136,7 +136,7 @@ Finally, because the tag and bitmask associated with any domain is dependent upo
 
 Since potentially dangerous indirect memory operations are disallowed across domains, traditional stack and heap implementations shared across the entire program become virtually impossible to implement. While there could be a specific isolation domain which exists to contain a central stack and heap for the entire program, code from different domains would not be allowed to use relative offsetting from \texttt{ESP} to write over values or jump to addresses in stack variables. Furthermore, if a central stack and heap are not protected from modifications made by adversarial domains, an adversarial domain could cause the entire program to crash by, for example, smashing the stack.
 
-Because of this, multi-domain SFI requires that each isolation domain contain it's own stack and heap.
+Because of this, multi-domain SFI requires that each isolation domain contain its own stack and heap.
 
 As a consequence of this, the  \texttt{ESP} and \texttt{EBP} registers must be stored and loaded between every inter-domain control transfer. To implement this behavior, the two words at the top of each domain's virtual memory region (whose addresses have the largest values) will be used to store the domain's \texttt{ESP} and \texttt{EBP} values when transferring control to another domain.
 
@@ -173,16 +173,16 @@ For each function that one domain exports to another, a trampoline function is g
 
 Trampoline functions, which are created silently by the compiler, are standard functions whose function bodies contain only a call to the target function with the same arguments passed to the trampoline function. However, the return behavior of the trampoline function is slightly modified. Rather than emitting a \texttt{RET} instruction at the end of the trampoline function, the compiler will emit instructions that place the return value of the function on the trampoline stack, load the return address into a register, mask the return address (described in Section \ref{retmasks}), and then jump to the masked address.
 
-Since there are no restrictions on read instructions across domains, there are no issues with invoking domains being able to read return values across domains. It is important to note, however, that domains cannot pass arguments onto the stacks of other domains when making an inter-domain call, as that would require the invoking domain to be able to write to the stack of the target domain. Instead, we will redefine inter-domain function calling conventions such that the invoking domain places arguments on \textit{its own} stack, and then the target domain copies the arguments off of the stack by reading the values at the expected argument offsets from the invoking domain's stored \texttt{ESP} address. To prevent domains from specifying arbitrary return addresses on their own stack before jumping to the trampoline domain, the trampoline domain shall copy the return address of its invoker onto its own stack just as it copies the function arguments. Similarly, return values are read by the invoking domain from the expected offset of the target domain's stored \texttt{ESP} value. Each domain will be required to clean up arguments on its own stack at the end of a function's execution. Note that the trampoline domain will always be either the invoking or target domain for every inter-domain call.
+Since there are no restrictions on read instructions across domains, there are no issues with invoking domains being able to read return values across domains. It is important to note, however, that domains cannot pass arguments onto the stacks of other domains when making an inter-domain call, as that would require the invoking domain to be able to write to the stack of the target domain. Instead, we will redefine inter-domain function calling conventions (that is, the calling conventions for any function which could be the target of an inter-domain jump) such that the invoking domain places all arguments on \textit{its own} stack, and then the target domain copies the arguments onto its own stack by reading the values at the expected argument offsets from the invoking domain's stored \texttt{ESP} address. The trampoline domain shall also copy the return address of its invoker onto its own stack just as it copies the function arguments. Similarly, return values are read by the invoking domain from the expected offset of the target domain's stored \texttt{ESP} value. Each domain will be required to clean up arguments on its own stack at the end of a function's execution. Note that the trampoline domain will always be either the invoking or target domain for every inter-domain call.
 
 While we will require that every inter-domain jump go through the trampoline region, we will also place more specific limits on the domains that are able to access specific addresses within the trampoline region. Since we require that all inter-domain jumps be direct memory operations, we by definition know the exact targets of every inter-domain jump at compile time. As a result, we can restrict that a domain $d_i$ only be allowed to jump to a function in $d_\text{tramp}$ if the target function is a trampoline for some function in $d_j$ which was exported to $d_i$.
 
-Finally, the trampoline domain shall be created within the address space just as any other domain; that is, $d_\text{tramp}$ will have a corresponding tag $t_\text{tramp}$ which is a power of two. Even though every domain should be able to access the trampoline domain, we require that any jumps to the trampoline domain be direct jumps. As such, we do not need to worry about updating the definition of $m_i$ from Eq. \ref{eq:bitmask} to grant access to the trampoline region as bitmasks are used for providing access for indirect jumps.
+Finally, the trampoline domain shall be created within the address space just as any other domain; that is, $d_\text{tramp}$ will have a corresponding tag $t_\text{tramp}$ which is a power of two. Even though every domain should be able to access the trampoline domain, we require that any jumps to the trampoline domain be direct jumps. As such, we do not need to worry about updating the definition of $m_i$ from Eq. \ref{eq:bitmask} to grant access to the trampoline region as bitmasks are only used for providing access for indirect jumps.
 
 
 \subsubsection{Return Masks} \label{retmasks}
 
-In order to allow inter-domain transfers via trampoline functions as described in Section \ref{trampoline}, it was necessary that we modify the sequence of instruction used for returns. Instead of the compiler emitting a \texttt{RET} instruction at the end of each function, it instead emits instructions which place the return value onto the stack, load the return address into a register, mask the return address, and then jump to the masked return address. In multi-domain SFI, we will require that this process be used for every function return, not just inter-domain returns, since we cannot know at compile time which functions were the targets of inter-domain calls. The return process is an exception to the rule that inter-domain jumps must be direct operations.
+In order to allow inter-domain transfers via trampoline functions as described in Section \ref{trampoline}, it was necessary that we modify the sequence of instruction used for returns. Instead of the compiler emitting a \texttt{RET} instruction at the end of each function, it instead emits instructions which place the return value onto the stack, load the return address into a register, mask the return address, and then jump to the masked return address. In multi-domain SFI, we will require that this process be used for every function return, not just inter-domain returns, since we cannot know at compile time which functions will be the targets of inter-domain calls. The return process is an exception to the rule that inter-domain jumps must be direct operations.
 
 As such, we define the return mask $r_i$ for domain $d_i$ as:
 
@@ -198,9 +198,9 @@ Therefore, we require that each return address is \texttt{AND}ed with $r_i$ befo
 
 Function pointers present a significant challenge to the usage of multi-domain SFI. Specifically, if a function pointer points to a function whose code is outside of the invoking domain, that function call will fail because the pointer will be masked before the indirect jump (which are not allowed across domains). As such, we define that function pointers cannot be invoked across domain boundaries. This may change the implementation of some programs, but we expect the impact to be small and avoidable.
 
-However, the issue of inter-domain function pointers poses a larger issue in the context of objects. Objects are implemented by compilers as \textit{vtables}, which are effectively structs containing function pointers. If a class is defined within the same domain in which its objects will be declared and used, than there will be no issues. However, issues arise if objects are passed between domains and methods are invoked in the non-original domain. As such, we will define that methods on objects can only be invoked in the domain in which that object was instantiated.
+However, the issue of inter-domain function pointers poses a larger issue in the context of objects. Objects are implemented by compilers as \textit{vtables}, which are effectively structs containing function pointers. If a class is defined -- that is, it's class implementation code is contained -- within the same domain in which its objects will be declared and used, then there will be no issues. However, issues arise if objects are passed between domains and methods are invoked in the non-original domain. As such, we will define that methods on objects can only be invoked in the domain in which that object was instantiated.
 
-Furthermore, a developer may want to export a class definition to another domain. If this is occurs, the compiler will fully duplicate the method code in all exported regions such that objects instantiated in the exported region can still function normally. If an imported library (such as \texttt{stdlib} is exported, the compiler will interpret such an action as exporting all class definitions in the library to the exported domain.
+Furthermore, by default we will define that objects are only able to be instantiated within the domains in which they are defined. However, a developer can choose to export a class definition to another domain. In this case, the compiler will fully duplicate the method code in all exported domains such that objects instantiated in the exported domain can still function normally. If an imported library (such as \texttt{stdlib} is exported, the compiler will interpret such an action as exporting all class definitions in the library to the exported domain.
 
 \subsection{Limitations}
 
@@ -214,19 +214,20 @@ To gain the benefits of multi-domain SFI, developers must annotate their source 
 
 In C++, SFI domains are defined using namespaces. Formally, isolation domains are constructed as C++ namespaces named \texttt{sfi\_X} where $X$ is the name used to refer to the isolation domain throughout the annotated code. For example, an SFI domain named \texttt{foo} would be created by placing the isolation-desired code in a namespace titled \texttt{sfi\_foo}.
 
-The global namespace, such as where the \texttt{main} function must be placed, will be labeled as the isolation domain \texttt{sfi\_std}.
+The global namespace, such as where the \texttt{main} function must be placed, will be implicitly labeled as the isolation domain \texttt{sfi\_std}.
 
 \subsection{Exports} \label{exports}
 
-Thus, to make a function within an isolation domain available to be accessed by \texttt{main}, the function should be annotated with \texttt{export(std)}.
+Functions which are to be made available to other isolation domains are decorated with a C++ Macro that contains the name of the domain(s) which should be able to access the decorated function. This macro is called \texttt{export}. Specifically, if a function \texttt{myFunc} in isolation domain \texttt{foo} was to be made available to isolation domains \texttt{bar} and \texttt{baz}, \texttt{myFunc} would be immediately preceded by the macro \texttt{export(bar, baz)}. Thus, to make a function within an isolation domain available to be accessed by \texttt{main}, the function should be annotated with \texttt{export(std)}.
 
-Import macros must also be exported to specific domains. Exporting an import makes all functions within that import available to the target domain. If imports are not annotated and are in the global namespace, they will be made available only to \texttt{sfi\_std}. Otherwise, imports should be annotated just as regular functions, such as the following example which makes C++'s \texttt{stdio} available to isolation domain \texttt{foo}:
+Naturally, all isolation domains are allowed to access themselves without any additional annotation.
+
+Include macros must also be exported to specific domains. Exporting an included library makes all functions and class definitions within that library available to the target domain. If \texttt{include} macros are not annotated with an \texttt{export}, they will implicitly be exported to the SFI domain in which they are contained. Thus, non-exported \texttt{
+\#include}s in the global namespace will be made available only to \texttt{sfi\_std}. Otherwise, includes should be annotated just as regular functions, such as the following example which makes C++'s \texttt{stdio} available to isolation domain \texttt{foo}:
 \begin{minted}[bgcolor=light-gray]{c++}
 #export(foo)
-#import <stdio.h>
+#include <stdio.h>
 \end{minted}
-
-Functions which are to be made available to other isolation domains are decorated with a C++ Macro that contains the name of the zone(s) which should be able to access the decorated function. This macro is called \texttt{export}. Specifically, if a function \texttt{myFunc} in isolation domain \texttt{foo} was to be made available to isolation domains \texttt{bar} and \texttt{baz}, \texttt{myFunc} would be immediately preceded by the macro \texttt{export(bar, baz)}. Naturally, all isolation domains are allowed to access themselves without any additional annotation.
 
 The behavior of the compiler with respect to exported functions is implemented as a trampoline domain described in Section \ref{trampoline}.
 
@@ -281,7 +282,7 @@ int main() {
 
 \subsection{Memory Layout View}
 
-The virtual memory layout depicted in Figure \ref{domains_mem} is the in-memory representation of the virtual address space for the compiled binary of the above C++ code. Memory addresses indicate the lower bound of the address range for the adjacent memory section.\\
+The virtual memory layout depicted in Figure \ref{domains_mem} is the in-memory representation of the virtual address space for the compiled binary of the above C++ code. Memory addresses indicate the lower bound of the address range for the corresponding labeled section of memory.\\
 
 \begin{figure*}[b]
 \begin{drawstack}[scale=0.75]
@@ -331,8 +332,8 @@ Note that \texttt{NOP}s will be placed after the code within each section in ord
 \subsubsection{Bitmasks View}
 
 As defined in Eq.  \ref{eq:bitmask}, bitmasks are created by logically \texttt{OR}ing the tag of a region with the value $G$. Applying the definition of $G$ from Eq. \ref{eq:G} yields a value of
-$$ \small{\texttt{0x07fffff0}\ =}$$
-$$ \small{\texttt{0b00000111111111111111111111110000}} $$
+$$ \small{G=\texttt{0x07ffffe0}}$$
+$$ \small{=\texttt{0b00000111111111111111111111100000}} $$
 
 With the value of $G$, we can easily calculate the bitmasks for each region from the information in the annotated code. Table \ref{tbl:masks} shows all isolation domains with their corresponding bitmasks rather than their tags.
 
@@ -342,13 +343,13 @@ With the value of $G$, we can easily calculate the bitmasks for each region from
 \begin{tabular}{@{}lll@{}}
 \rowcolor[HTML]{EFEFEF} 
 \textbf{Domain ($d_i$)} & \textbf{Tag ($t_i$)} & \textbf{Bitmask ($m_i$)} \\ \midrule
-\texttt{stdio}          & 0x80000000           & 0x87fffff0               \\
+\texttt{stdio}          & 0x80000000           & 0x87ffffe0               \\
 \rowcolor[HTML]{EFEFEF} 
-\texttt{foo}            & 0x40000000           & 0x47fffff0               \\
-\texttt{bar}            & 0x20000000           & 0x27fffff0               \\
+\texttt{foo}            & 0x40000000           & 0x47ffffe0               \\
+\texttt{bar}            & 0x20000000           & 0x27ffffe0               \\
 \rowcolor[HTML]{EFEFEF} 
-\texttt{std}            & 0x10000000           & 0x17fffff0               \\
-\texttt{tramp}          & 0x08000000           & 0x0ffffff0              
+\texttt{std}            & 0x10000000           & 0x17ffffe0               \\
+\texttt{tramp}          & 0x08000000           & 0x0fffffe0              
 \end{tabular}
 
 \caption{Tag and bitmask values for each domain}
@@ -357,11 +358,15 @@ With the value of $G$, we can easily calculate the bitmasks for each region from
 
 \section{Future Work}
 
-While this paper develops a comprehensive theoretical model for the multi-domain SFI system, further work is needed to implement this system within a compiler and to profile the overhead of its techniques on the runtime of compiled code.
+While this paper develops a comprehensive theoretical model for the multi-domain SFI system, further work is needed to implement this system within a compiler and to profile the overhead of its techniques on the runtime and size of compiled code. Work is ongoing in implementing the multi-domain SFI specification as an extension to the clang compiler.
 
 \section{Conclusion}
 
-We have developed a comprehensive theoretical model that provides the same guarantees as traditional SFI while allowing up to \texttt{O(b)} different isolation zones for a \textit{b}-bit virtual address space. This model employs the use of forced memory alignment, restricted memory operations, bitmasking indirect jumps, domain-independent stacks and heaps, and a trampoline domain for control-flow transfers across domains. We have also developed a developer model for C++ in which developers can specify multi-domain SFI configurations through code annotations. The development of this model has significant pertinence to enabling low-overhead, process-like fault isolation for key components of systems-minimal application designs such as Unikernels.
+We have developed a comprehensive theoretical model that provides the same guarantees as traditional SFI while allowing up to \texttt{O(b)} different isolation zones for a \textit{b}-bit virtual address space. This model employs the use of forced memory alignment, restricted memory operations, bitmasking indirect jumps, domain-independent stacks and heaps, and a trampoline domain for control-flow transfers across domains. We have also created a developer model for C++ in which developers can specify multi-domain SFI configurations through code annotations. The development of this model has significant pertinence to enabling low-overhead, process-like fault isolation for key components of systems-minimal application designs such as Unikernels.
+
+\section{Acknowledgments}
+
+The author of this text would like to thank Harvard University Professor James Mickens for advising this paper and providing countless suggestions, corrections, and refinements to the ongoing work throughout the conception and design of multi-domain SFI.
 
 \medskip
  
